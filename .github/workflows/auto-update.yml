@@ -7,6 +7,11 @@ name: Auto-update upstream versions
 # 任一与 config/bootstrap/*.env 中记录不一致时，更新 env 文件与 manifest 版本号，
 # commit 并 push 到 main —— 这会触发 build.yml 构建并发布新 FPK（自动发版）。
 # 版本号规则：web-ui 主版本变化则重置 build 计数为 1，否则 build+1。
+#
+# 2026-08-23 加固：全部上游 API 调用带重试（3 次、间隔 10s、--retry-all-errors）；
+# hermes-agent 标签校验从「跟随 302→codeload 重定向链下载 tarball」改为 git/refs/tags
+# 单请求状态码检查。起因：2026-08-23 04:03 UTC 一次运行中，tarball 校验遭遇 GitHub
+# 瞬时故障，无任何重试即中止，导致当天 0.6.45/0.6.46 的 bump 整天缺失。
 
 on:
   schedule:
@@ -33,10 +38,10 @@ jobs:
           # hermes-web-ui：跟踪官方 GitHub Release（EKKOLearnAI/hermes-studio）。
           # 官方在 release 上随版本即时发布预构建产物，比 npm 发布更及时；其 release 被官方
           # 显式标记为「非 latest」，故不能取 releases/latest，需自行过滤版本标签（^v\d+\.\d+\.\d+$）。
-          WEBUI_LATEST="$(curl -fsSL --max-time 30 "https://api.github.com/repos/EKKOLearnAI/hermes-studio/releases?per_page=100" \
+          WEBUI_LATEST="$(curl --retry 3 --retry-delay 10 --retry-all-errors -fsSL --max-time 60 "https://api.github.com/repos/EKKOLearnAI/hermes-studio/releases?per_page=100" \
             | python3 -c 'import sys,json,re; d=json.load(sys.stdin); rel=[r for r in d if re.match(r"^v\d+\.\d+\.\d+$", r["tag_name"]) and not r.get("prerelease")]; rel.sort(key=lambda r: r["published_at"], reverse=True); print(rel[0]["tag_name"].lstrip("v") if rel else "")')"
           # hermes-agent：仍跟踪 NousResearch/hermes-agent 最新 release 标签
-          AGENT_LATEST="$(curl -fsSL --max-time 30 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          AGENT_LATEST="$(curl --retry 3 --retry-delay 10 --retry-all-errors -fsSL --max-time 60 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/NousResearch/hermes-agent/releases/latest \
             | python3 -c 'import sys,json;print(json.load(sys.stdin)["tag_name"])')"
           echo "webui_latest=$WEBUI_LATEST" >> "$GITHUB_OUTPUT"
@@ -49,15 +54,28 @@ jobs:
             exit 1
           fi
           # web-ui：确认官方 release 上确实存在对应的预构建产物 hermes-web-ui-${ver}.tar.gz
-          WEBUI_ASSET_OK="$(curl -fsSL --max-time 30 "https://api.github.com/repos/EKKOLearnAI/hermes-studio/releases/tags/v${WEBUI_LATEST}" \
+          WEBUI_ASSET_OK="$(curl --retry 3 --retry-delay 10 --retry-all-errors -fsSL --max-time 60 "https://api.github.com/repos/EKKOLearnAI/hermes-studio/releases/tags/v${WEBUI_LATEST}" \
             | WV="$WEBUI_LATEST" python3 -c "import sys,json,os; d=json.load(sys.stdin); names=[a['name'] for a in d.get('assets',[])]; print('yes' if f'hermes-web-ui-{os.environ[\"WV\"]}.tar.gz' in names else 'no')")"
           if [ "$WEBUI_ASSET_OK" != "yes" ]; then
             echo "::error:: 官方 release v${WEBUI_LATEST} 缺少 hermes-web-ui-${WEBUI_LATEST}.tar.gz 预构建产物，中止更新"
             exit 1
           fi
-          if ! curl -fsSL --max-time 30 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-               "https://api.github.com/repos/NousResearch/hermes-agent/tarball/$AGENT_LATEST" >/dev/null 2>&1; then
-            echo "::error:: GitHub 上不存在 hermes-agent 标签 $AGENT_LATEST（tarball 不可达），中止更新"
+          # hermes-agent：校验标签存在。用 git/refs/tags 单请求检查替代 tarball 下载——
+          # tarball 需跟随 302→codeload 重定向链，瞬时故障概率高（2026-08-23 实例）；
+          # refs 检查为单请求、无重定向，且带重试。
+          AGENT_TAG_CODE=""
+          for attempt in 1 2 3; do
+            AGENT_TAG_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/NousResearch/hermes-agent/git/refs/tags/${AGENT_LATEST}" || echo 000)"
+            if [ "$AGENT_TAG_CODE" = "200" ]; then
+              break
+            fi
+            echo "hermes-agent 标签校验第 $attempt 次 -> HTTP $AGENT_TAG_CODE，10s 后重试..."
+            sleep 10
+          done
+          if [ "$AGENT_TAG_CODE" != "200" ]; then
+            echo "::error:: GitHub 上不存在 hermes-agent 标签 $AGENT_LATEST（git refs HTTP $AGENT_TAG_CODE），中止更新"
             exit 1
           fi
 
