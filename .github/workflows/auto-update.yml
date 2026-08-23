@@ -1,8 +1,9 @@
 name: Auto-update upstream versions
 
 # 自动跟踪上游版本并触发重建：
-#   - hermes-web-ui（官方 GitHub Release：EKKOLearnAI/hermes-studio，0.6.x 线）：取最新版本标签，
-#     构建时从该 release 的预构建产物 hermes-web-ui-${ver}.tar.gz 获取（比 npm 发布更及时）。
+#   - hermes-web-ui（官方 GitHub Release：EKKOLearnAI/hermes-studio，0.6.x 线）：取「带预构建产物
+#     hermes-web-ui-${ver}.tar.gz 资产」的 release 中最新的版本标签（带资产校验，天然跳过同仓库的
+#     手机端 release，如 v1.0.0 仅含 HStudio.apk），构建时用该资产（比 npm 发布更及时）。
 #   - hermes-agent（GitHub release，日期版如 v2026.8.3）：取 NousResearch/hermes-agent 最新 release 标签。
 # 任一与 config/bootstrap/*.env 中记录不一致时，更新 env 文件与 manifest 版本号，
 # commit 并 push 到 main —— 这会触发 build.yml 构建并发布新 FPK（自动发版）。
@@ -38,8 +39,11 @@ jobs:
           # hermes-web-ui：跟踪官方 GitHub Release（EKKOLearnAI/hermes-studio）。
           # 官方在 release 上随版本即时发布预构建产物，比 npm 发布更及时；其 release 被官方
           # 显式标记为「非 latest」，故不能取 releases/latest，需自行过滤版本标签（^v\d+\.\d+\.\d+$）。
+          # 2026-08-23 起：仅在「确实带 hermes-web-ui-<ver>.tar.gz 资产」的 release 中选取，
+          # 按 published_at 取最新——官方同仓库还会发手机端 release（如 v1.0.0 只有 HStudio.apk），
+          # 若不按资产过滤，手机端新版本会抢先入选、再因缺少预构建产物校验失败而中止整天更新。
           WEBUI_LATEST="$(curl --retry 3 --retry-delay 10 --retry-all-errors -fsSL --max-time 60 "https://api.github.com/repos/EKKOLearnAI/hermes-studio/releases?per_page=100" \
-            | python3 -c 'import sys,json,re; d=json.load(sys.stdin); rel=[r for r in d if re.match(r"^v\d+\.\d+\.\d+$", r["tag_name"]) and not r.get("prerelease")]; rel.sort(key=lambda r: r["published_at"], reverse=True); print(rel[0]["tag_name"].lstrip("v") if rel else "")')"
+            | python3 -c 'import sys,json,re; d=json.load(sys.stdin); rel=[(r["published_at"],r["tag_name"].lstrip("v")) for r in d if re.match(r"^v\d+\.\d+\.\d+$",r["tag_name"]) and not r.get("prerelease") and ("hermes-web-ui-"+r["tag_name"].lstrip("v")+".tar.gz") in [a["name"] for a in r.get("assets",[])]]; rel.sort(reverse=True); print(rel[0][1] if rel else "")')"
           # hermes-agent：仍跟踪 NousResearch/hermes-agent 最新 release 标签
           AGENT_LATEST="$(curl --retry 3 --retry-delay 10 --retry-all-errors -fsSL --max-time 60 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/NousResearch/hermes-agent/releases/latest \
