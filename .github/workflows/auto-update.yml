@@ -13,11 +13,15 @@ name: Auto-update upstream versions
 # hermes-agent 标签校验从「跟随 302→codeload 重定向链下载 tarball」改为 git/refs/tags
 # 单请求状态码检查。起因：2026-08-23 04:03 UTC 一次运行中，tarball 校验遭遇 GitHub
 # 瞬时故障，无任何重试即中止，导致当天 0.6.45/0.6.46 的 bump 整天缺失。
+# 2026-08-25：检查频率从每天 1 次改为 3 次（UTC 01:17 / 09:17 / 17:17）。
+# 起因：官方 0.6.47 于 08-24 12:25 UTC 发布，当日 cron 已于 03:17 跑过，下次要等
+# 24h，用户两次反映「官方更新了没同步」。3 次/天把最长滞后压到 ~8h，且全部 API
+# 调用带重试，远低于限流门槛。
 
 on:
   schedule:
-    # 每天 UTC 03:17 检查一次上游（避开整点，降低 GitHub 限流概率）
-    - cron: '17 3 * * *'
+    # 每天 UTC 01:17 / 09:17 / 17:17 检查上游（避开整点，降低 GitHub 限流概率）
+    - cron: '17 1,9,17 * * *'
   workflow_dispatch:
 
 permissions:
