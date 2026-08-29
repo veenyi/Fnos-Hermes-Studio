@@ -1,5 +1,5 @@
 appname               = hermes-studio
-version               = 0.6.47-2
+version               = 0.7.1-1
 display_name          = "Hermes Studio"
 desc                  = "Hermes Studio 是 Hermes Agent 的桌面 / Web 控制台与本地运行时，支持与 AI Agent 流式对话、管理模型与配置、接入多平台渠道、自动化任务、文件浏览器、Web 终端、编码 Agent 与本地数据持久化。<br/><br/><strong>核心能力：</strong><br/>• Agent 聊天：Socket.IO 流式运行 Hermes Agent，支持工具追踪、文件收发、本地会话持久化<br/>• 本地控制台：集中管理 profiles、providers、models、凭证、记忆、技能、插件、日志与运行时设置<br/>• 自动化：配置平台渠道、cron 定时任务、看板任务、群聊房间、MCP 服务器<br/>• 工作区工具：文件浏览器、Web 终端、语音输入/输出、编码 Agent 运行器、设备发现、性能监控<br/><br/><strong>部署说明：</strong><br/>本包以官方预构建产物 + bundled node_modules 方式安装（非 Docker），已将 hermes-web-ui 的 node_modules 与 Hermes Agent 的 browser tools + TUI 依赖（hermes-agent-node）一并预装进 FPK，首次安装会自动使用飞牛应用中心 Node.js v24 运行时并把预装依赖复制到数据目录，后台安装不再联网跑 npm install，启动后默认监听 8648 端口，通过应用图标即可在浏览器打开原版 Web UI。<br/><br/><strong>免责声明：</strong><br/>本应用仅作为 Hermes Studio 在飞牛 fnOS 上的打包分发，不对软件本身的安全性、稳定性作任何保证。使用过程中产生的所有风险由用户自行承担。"
 platform              = all
